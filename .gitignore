@@ -1,0 +1,22 @@
+# ----------------------------------------------------------------------------
+# Participant research data — HUMAN-SUBJECTS DATA. Never commit or publish.
+# These contain real prompts, names, company names, IPs, file paths, keys, etc.
+# ----------------------------------------------------------------------------
+raw-logs/
+clean-logs/
+
+# OS / editor noise
+.DS_Store
+**/.DS_Store
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+.mypy_cache/
+.pytest_cache/
+
+# Local tooling / settings
+.claude/
