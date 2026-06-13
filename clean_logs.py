@@ -2,18 +2,18 @@
 """
 clean_logs.py — Normalise heterogeneous AI assistant logs into a single clean format.
 
-Research participants sent their AI usage logs in many shapes (Claude Code "classic"
-project logs, the newer Claude Code v3 session format, OpenAI Codex CLI logs, and —
-in the future — anything else). This tool reads everything under ``raw-logs/`` and
-writes a clean, uniform per-participant JSON file under ``clean-logs/`` containing
-ONLY what the research cares about:
+GenAI assistant logs come in many shapes (Claude Code "classic" project logs, the
+newer Claude Code v3 session format, OpenAI Codex CLI logs, and — in the future —
+anything else). This tool reads everything under ``raw-logs/`` and writes a clean,
+uniform JSON file per input under ``clean-logs/`` containing ONLY the parts worth
+reading back:
 
   * the prompts the human actually typed, and
   * the assistant's natural-language answers,
 
-with a small metadata header (participant id, models used, providers, sessions,
-working dirs, dates). Everything else — chain-of-thought / "thinking", tool calls,
-tool results, system & meta lines, injected boilerplate — is stripped out.
+with a small metadata header (id, models used, providers, sessions, working dirs,
+dates). Everything else — chain-of-thought / "thinking", tool calls, tool results,
+system & meta lines, injected boilerplate — is stripped out.
 
 Design goals
 ------------
@@ -409,8 +409,7 @@ def merge_consecutive(messages: List[Message]) -> List[Message]:
 
     User turns are NEVER merged: two consecutive human turns are two distinct
     prompts (the human sent two messages, or the assistant's turn in between was
-    tool-only and got stripped). Fusing them would corrupt the prompt-level counts
-    this research depends on.
+    tool-only and got stripped). Fusing them would corrupt the per-prompt counts.
     """
     out: List[Message] = []
     for m in messages:

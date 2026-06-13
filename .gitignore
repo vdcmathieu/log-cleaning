@@ -1,6 +1,6 @@
 # ----------------------------------------------------------------------------
-# Participant research data — HUMAN-SUBJECTS DATA. Never commit or publish.
-# These contain real prompts, names, company names, IPs, file paths, keys, etc.
+# Log data in and out — never committed. These hold real conversation content
+# (prompts, names, paths, keys, ...); keep them local.
 # ----------------------------------------------------------------------------
 raw-logs/
 clean-logs/
