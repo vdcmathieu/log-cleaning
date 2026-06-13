@@ -235,6 +235,7 @@ _STRIP_BLOCK_PATTERNS = [
     re.compile(r"<system-reminder>.*?</system-reminder>", re.S),
     re.compile(r"<local-command-stdout>.*?</local-command-stdout>", re.S),
     re.compile(r"<local-command-caveat>.*?</local-command-caveat>", re.S),
+    re.compile(r"<task-notification>.*?</task-notification>", re.S),
 ]
 
 # Wrappers that mark a whole "user" turn as machine-injected context rather than a
@@ -246,7 +247,12 @@ _INJECTED_CONTEXT_PREFIXES = (
     "<user_instructions>",
     "<EXPERIMENTAL_",
     "<command-output>",
+    "<task-notification>",
+    "[SYSTEM NOTIFICATION",
 )
+
+# Opening phrase of a CLI-generated context-compaction summary (not human input).
+_COMPACT_SUMMARY_PREFIX = "This session is being continued from a previous conversation"
 
 _INTERRUPT_RE = re.compile(r"^\[Request interrupted by user[^\]]*\]$")
 _CMD_NAME_RE = re.compile(r"<command-name>(.*?)</command-name>", re.S)
@@ -272,6 +278,10 @@ def clean_user_text(text: Optional[str]) -> Optional[str]:
 
     low = t.lower()
     if low.startswith("caveat: the messages below") and "<command-name>" not in t:
+        return None
+
+    # CLI-generated context-compaction summary — machine text, not a human prompt.
+    if t.startswith(_COMPACT_SUMMARY_PREFIX):
         return None
 
     # Slash command invocations: keep only if they carry argument / content text.
@@ -329,9 +339,9 @@ def iter_records(path: Path) -> Iterator[Tuple[int, Optional[Any], Optional[str]
                     yield i, None, str(exc)
     else:  # treat everything else as a single JSON document
         try:
-            with open(path, encoding="utf-8-sig") as fh:
+            with open(path, encoding="utf-8-sig", errors="replace") as fh:
                 data = json.load(fh)
-        except (OSError, json.JSONDecodeError) as exc:
+        except (OSError, ValueError) as exc:  # ValueError covers JSON + Unicode errors
             yield 0, None, str(exc)
             return
         if isinstance(data, list):
@@ -390,23 +400,27 @@ class Options:
 
 
 def merge_consecutive(messages: List[Message]) -> List[Message]:
-    """Collapse runs of same-role turns into one.
+    """Collapse runs of consecutive ASSISTANT turns into one answer.
 
     Claude Code (and agentic CLIs generally) emit an assistant 'turn' for every
     step between tool calls, so a single answer arrives as many small text
-    fragments once the tool calls are stripped. Merging consecutive same-role
-    messages restores the natural 'one prompt -> one answer' reading.
+    fragments once the tool calls are stripped. Merging those restores the natural
+    'one prompt -> one answer' reading.
+
+    User turns are NEVER merged: two consecutive human turns are two distinct
+    prompts (the human sent two messages, or the assistant's turn in between was
+    tool-only and got stripped). Fusing them would corrupt the prompt-level counts
+    this research depends on.
     """
     out: List[Message] = []
     for m in messages:
-        if out and out[-1].role == m.role:
+        if out and out[-1].role == m.role == "assistant":
             prev = out[-1]
             prev.text = (prev.text + "\n\n" + m.text).strip()
-            if m.role == "assistant":
-                if not prev.model and m.model:
-                    prev.model = m.model
-                if not prev.provider and m.provider:
-                    prev.provider = m.provider
+            if not prev.model and m.model:
+                prev.model = m.model
+            if not prev.provider and m.provider:
+                prev.provider = m.provider
         else:
             out.append(m)
     return out
@@ -493,7 +507,7 @@ class ClaudeClassicAdapter(Adapter):
                 continue
             if rec.get("isSidechain") and not opts.include_sidechains:
                 continue
-            if rec.get("isMeta"):
+            if rec.get("isMeta") or rec.get("isCompactSummary"):
                 continue
 
             sess = get_session(rec)
@@ -993,7 +1007,12 @@ def process_participant(source: Path, raw_root: Path, opts: Options) -> Dict[str
 
     for f in files:
         rel = str(f.relative_to(raw_root))
-        sample = sample_records(f)
+        try:
+            sample = sample_records(f)
+        except Exception as exc:  # never let one unreadable file abort the participant
+            parse_errors.append("%s: unreadable (%s)" % (rel, exc))
+            formats[rel] = "error"
+            continue
         if not sample:
             parse_errors.append("%s: no readable JSON records" % rel)
             formats[rel] = "empty"
